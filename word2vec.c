@@ -25,7 +25,7 @@
 #define MAX_CODE_LENGTH 40
 
 const int vocab_hash_size = 30000000;  // Maximum 30 * 0.7 = 21M words in the vocabulary
-const int ngram_hash_size = 300000;  // Maximum 300 * 0.7 = 210K ngrams in the vocabulary
+const int ngram_hash_size = 3000000;  // Maximum 300 * 0.7 = 210K ngrams in the vocabulary
 
 typedef float real;                    // Precision of float numbers
 
@@ -208,6 +208,7 @@ int SearchThenAddNgram(char *ngram){
 }
 void Vocab2Ngram()
 {
+	printf("\nNgram vocab building...\n");
 	int b, d,ngram_id, ngramlen;
 	int count;
 	int start;
@@ -241,7 +242,15 @@ void Vocab2Ngram()
 			}
 			if (count ==ngram_per_word_size) break;
 		}
+
+//	    if (d % 100000 == 0)
+//	    {
+//	      //printf("%lldK%c", d / 100, 13);
+//	      printf("%d-th word, ngram_size:%d\n", d,ngram_size);
+//	      fflush(stdout);
+//	    }
 	}
+	printf("Ngram size:%d\n", ngram_size);
 }
 
 
