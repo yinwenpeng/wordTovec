@@ -46,7 +46,7 @@ struct ngram *ngrams;
 int binary = 0, cbow = 1, debug_mode = 2, window = 5, min_count = 5, num_threads = 12, min_reduce = 1, max_ngram_len=3;
 int *vocab_hash, *ngram_hash, *word2ngram;
 long long vocab_max_size = 1000, vocab_size = 0, layer1_size = 100;
-long long ngram_max_size = 1000, ngram_size = 0, ngram_per_word_size = 30;
+long long ngram_max_size = 1000, ngram_size = 0, ngram_per_word_size = 20;
 long long train_words = 0, word_count_actual = 0, iter = 5, file_size = 0, classes = 0;
 real alpha = 0.025, starting_alpha, sample = 1e-3;
 real *syn0, *syn1, *syn1neg, *expTable, *ngramEmbs;
@@ -228,7 +228,7 @@ void Vocab2Ngram()
 		count =0;//count how many ngrams stored already
 		for (start=0; start< wordlen; start++)
 		{
-			for(ngramlen=1;ngramlen<=max_ngram_len; ngramlen++)
+			for(ngramlen=2;ngramlen<=max_ngram_len; ngramlen++) // 1-gram, 2-gram, 3-gram
 			{
 				if (start+ngramlen <= wordlen)
 				{
@@ -507,6 +507,8 @@ void *TrainModelThread(void *id) {
   real *neu1 = (real *)calloc(layer1_size, sizeof(real));
   real *neu1e = (real *)calloc(layer1_size, sizeof(real));
   real *neu1e_ngram = (real *)calloc(layer1_size, sizeof(real));
+  real *sum_ngram_embs = (real *)calloc(layer1_size, sizeof(real));
+
 
   FILE *fi = fopen(train_file, "rb");
   fseek(fi, file_size / (long long)num_threads * (long long)id, SEEK_SET);
@@ -565,6 +567,7 @@ void *TrainModelThread(void *id) {
     for (c = 0; c < layer1_size; c++) neu1[c] = 0;
     for (c = 0; c < layer1_size; c++) neu1e[c] = 0;
     for (c = 0; c < layer1_size; c++) neu1e_ngram[c] = 0;
+    for (c = 0; c < layer1_size; c++) sum_ngram_embs[c] = 0;
     next_random = next_random * (unsigned long long)25214903917 + 11;
     b = next_random % window;
     if (cbow)
@@ -717,28 +720,41 @@ void *TrainModelThread(void *id) {
         	  ngramEmbs[c + ngram_id*layer1_size] += g * syn0[c + l1];
         }
 
-        //use the positive ngrams fr
+        //use the positive ngrams fr  sum_ngram_embs
+        label =1;
         for (d=0; d< ngram_per_word_size; d++)
         {
-        	ngram_id = word2ngram[last_word*ngram_per_word_size+d];
-        	if (ngram_id !=-1){
+        	ngram_id = word2ngram[last_word*ngram_per_word_size+d]; // use all n-grams
+        	if (ngram_id !=-1)
+        	{
                 f = 0;
-                label =1;
-                for (c = 0; c < layer1_size; c++) f += syn0[c + l1] * ngramEmbs[c + ngram_id*layer1_size];
-                if (f > MAX_EXP)
-              	  g = (label - 1) * alpha;
-                else if (f < -MAX_EXP)
-              	  g = (label - 0) * alpha;
-                else
-              	  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
-                //accumulate current target info
                 for (c = 0; c < layer1_size; c++)
-              	  neu1e_ngram[c] += g * ngramEmbs[c + ngram_id*layer1_size];
+                	sum_ngram_embs[c] += ngramEmbs[c + ngram_id*layer1_size];
+        	}
+        	else break;
+        }
+        f = 0;
+        for (c = 0; c < layer1_size; c++) f += syn0[c + l1] * sum_ngram_embs[c];
+        if (f > MAX_EXP)
+      	  g = (label - 1) * alpha;
+        else if (f < -MAX_EXP)
+      	  g = (label - 0) * alpha;
+        else
+      	  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
+        //accumulate current target info
+        for (c = 0; c < layer1_size; c++)
+      	  neu1e_ngram[c] += g * sum_ngram_embs[c];
+
+        for (d=0; d< ngram_per_word_size; d++)
+        {
+        	ngram_id = word2ngram[last_word*ngram_per_word_size+d]; // use all n-grams
+        	if (ngram_id !=-1)
+        	{
                 //update current target emb by current context emb
                 for (c = 0; c < layer1_size; c++)
               	  ngramEmbs[c + ngram_id*layer1_size] += g * syn0[c + l1];
         	}
-
+        	else break;
         }
 
 
